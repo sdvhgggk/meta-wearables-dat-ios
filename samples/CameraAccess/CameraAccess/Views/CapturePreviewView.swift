@@ -47,7 +47,7 @@ struct CapturePreviewView: View {
           .clipShape(RoundedRectangle(cornerRadius: 12))
           .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: 5)
 
-        CircleButton(icon: "square.and.arrow.up", text: "Share") {
+        CircleButton(icon: "square.and.arrow.up", text: "Поделиться") {
           showShareSheet = true
         }
         .accessibilityIdentifier("share_button")
@@ -68,6 +68,7 @@ struct CapturePreviewView: View {
       }
     }
     .onAppear { player?.play() }
+    .onDisappear { player?.pause() }
     .sheet(isPresented: $showShareSheet) {
       ShareSheet(activityItems: [shareItem])
     }

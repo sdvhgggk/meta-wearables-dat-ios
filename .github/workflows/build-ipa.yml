@@ -1,5 +1,5 @@
 
-name: Build Meta DAT IPA
+name: Build SHHQ Meta Pro IPA
 
 on:
   workflow_dispatch:
@@ -36,6 +36,20 @@ jobs:
             PROVISIONING_PROFILE_SPECIFIER="" \
             2>&1 | tee build.log
 
+      - name: Test persistent media library
+        run: |
+          set -o pipefail
+          DEVICE_ID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for devices in d["devices"].values() for x in devices if x["name"].startswith("iPhone")))')
+          xcodebuild test \
+            -project samples/CameraAccess/CameraAccess.xcodeproj \
+            -scheme CameraAccess \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=$DEVICE_ID" \
+            -derivedDataPath "$RUNNER_TEMP/MetaTests" \
+            -only-testing:CameraAccessTests/ProMediaLibraryTests \
+            CODE_SIGNING_ALLOWED=NO \
+            2>&1 | tee test.log
+
       - name: Package unsigned IPA
         run: |
           APP="$RUNNER_TEMP/MetaBuild/Build/Products/Release-iphoneos/CameraAccess.app"
@@ -45,13 +59,13 @@ jobs:
           mkdir -p Payload
           cp -R "$APP" Payload/
 
-          zip -qry MetaDAT-unsigned.ipa Payload
+          zip -qry SHHQ-Meta-Pro-unsigned.ipa Payload
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: MetaDAT-iPhone
-          path: MetaDAT-unsigned.ipa
+          name: SHHQ-Meta-Pro-iPhone
+          path: SHHQ-Meta-Pro-unsigned.ipa
           if-no-files-found: error
 
       - name: Upload build log on failure
@@ -59,5 +73,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: MetaDAT-build-log
-          path: build.log
+          path: |
+            build.log
+            test.log
           if-no-files-found: ignore

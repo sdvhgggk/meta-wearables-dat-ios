@@ -19,7 +19,7 @@ import MWDATCore
 import SwiftUI
 import UIKit
 
-private let updateRequiredTitle = "Update required"
+private let updateRequiredTitle = "Нужно обновление"
 
 struct CameraView: View {
   @State private var viewModel: CameraViewModel
@@ -29,6 +29,11 @@ struct CameraView: View {
 
   init(wearables: WearablesInterface, wearablesVM: WearablesViewModel) {
     self._viewModel = State(wrappedValue: CameraViewModel(wearables: wearables))
+    self._wearablesVM = Bindable(wearablesVM)
+  }
+
+  init(viewModel: CameraViewModel, wearablesVM: WearablesViewModel) {
+    self._viewModel = State(initialValue: viewModel)
     self._wearablesVM = Bindable(wearablesVM)
   }
 
@@ -91,16 +96,16 @@ struct CameraView: View {
     .animation(.easeInOut(duration: 0.2), value: viewModel.isPaused)
     .animation(.easeInOut(duration: 0.2), value: viewModel.includeAudioInStream)
     .animation(.easeInOut(duration: 0.2), value: viewModel.isRecording)
-    .alert("Something went wrong", isPresented: $viewModel.showError) {
+    .alert("Произошла ошибка", isPresented: $viewModel.showError) {
       Button("OK") { viewModel.dismissError() }
     } message: {
       Text(viewModel.errorMessage)
     }
-    .alert("Allow camera access", isPresented: $viewModel.showCameraPermissionRedirectConfirm) {
-      Button("Continue") { Task { await viewModel.confirmCameraPermissionRedirect() } }
-      Button("Cancel", role: .cancel) {}
+    .alert("Разрешить доступ к камере", isPresented: $viewModel.showCameraPermissionRedirectConfirm) {
+      Button("Продолжить") { Task { await viewModel.confirmCameraPermissionRedirect() } }
+      Button("Отмена", role: .cancel) {}
     } message: {
-      Text("To preview your glasses camera, you'll be taken to the Meta AI app to grant access, then returned here.")
+      Text("Сейчас откроется Meta AI для разрешения доступа к камере очков. После подтверждения ты вернёшься сюда.")
     }
     .navigationBarHidden(true)
   }
@@ -141,10 +146,10 @@ struct CameraView: View {
       Image(systemName: "pause.fill")
         .font(.system(size: 36))
         .foregroundStyle(.white)
-      Text("Paused")
+      Text("Пауза")
         .font(.system(size: 20, weight: .semibold))
         .foregroundStyle(.white)
-      Text("Tap your glasses to resume.")
+      Text("Коснись очков, чтобы продолжить.")
         .font(.system(size: 15))
         .multilineTextAlignment(.center)
         .foregroundStyle(Color.white.opacity(0.7))
@@ -167,15 +172,15 @@ struct CameraView: View {
   @ViewBuilder
   private var statusPlaceholder: some View {
     if !viewModel.hasActiveDevice {
-      placeholder(title: "Put on your glasses", subtitle: nil, showWaitingRow: true)
+      placeholder(title: "Надень очки", subtitle: nil, showWaitingRow: true)
     } else if isUpdateRequired {
-      placeholder(title: updateRequiredTitle, subtitle: "Apply the update to start your camera.", showWaitingRow: false)
+      placeholder(title: updateRequiredTitle, subtitle: "Для запуска камеры обнови очки.", showWaitingRow: false)
     } else if !viewModel.hasSession {
-      placeholder(title: "Ready", subtitle: "Start a session to connect to your glasses.", showWaitingRow: false)
+      placeholder(title: "Готово к съёмке", subtitle: "Начни сессию для подключения к очкам.", showWaitingRow: false)
     } else if viewModel.isPaused {
-      placeholder(title: "Paused", subtitle: "Tap your glasses to resume.", showWaitingRow: false)
+      placeholder(title: "Пауза", subtitle: "Коснись очков, чтобы продолжить.", showWaitingRow: false)
     } else {
-      placeholder(title: "Session started", subtitle: "Start the preview to see the live camera feed.", showWaitingRow: false)
+      placeholder(title: "Сессия начата", subtitle: "Включи просмотр изображения с очков.", showWaitingRow: false)
     }
   }
 
@@ -206,7 +211,7 @@ struct CameraView: View {
             .aspectRatio(contentMode: .fit)
             .foregroundStyle(Color.white.opacity(0.7))
             .frame(width: 16, height: 16)
-          Text("Waiting for an active device")
+          Text("Ожидание очков")
             .font(.system(size: 14))
             .foregroundStyle(Color.white.opacity(0.7))
         }
@@ -222,8 +227,8 @@ struct CameraView: View {
   private var topBar: some View {
     HStack(alignment: .top, spacing: 12) {
       VStack(alignment: .leading, spacing: 6) {
-        statusChip(label: "Session", value: viewModel.sessionStateText, active: viewModel.isSessionActive, present: viewModel.hasSession)
-        statusChip(label: "Stream", value: viewModel.streamStateText, active: viewModel.isStreaming, present: viewModel.hasStream)
+        statusChip(label: "Сессия", value: viewModel.sessionStateText, active: viewModel.isSessionActive, present: viewModel.hasSession)
+        statusChip(label: "Поток", value: viewModel.streamStateText, active: viewModel.isStreaming, present: viewModel.hasStream)
       }
 
       Spacer()
@@ -237,7 +242,7 @@ struct CameraView: View {
       .overlay(alignment: .trailing) {
         if showSettingsMenu {
           CustomButton(
-            title: "Disconnect",
+            title: "Отключить",
             style: .destructive,
             isDisabled: wearablesVM.registrationState != .registered
           ) {
@@ -317,7 +322,7 @@ struct CameraView: View {
   private var captureControlsEnabled: Bool { viewModel.isStreaming }
   /// Record/Stop stays available while recording even if the stream is paused, so a
   /// pause can't trap an in-progress recording; starting still needs a live stream.
-  private var recordControlEnabled: Bool { viewModel.isStreaming || viewModel.isRecording }
+  private var recordControlEnabled: Bool { (viewModel.isStreaming || viewModel.isRecording) && !viewModel.isFinalizingRecording }
   /// Mic additionally locks once recording starts — the audio setting can't change
   /// mid-take.
   private var micEnabled: Bool { viewModel.isStreaming && !viewModel.isRecording }
@@ -345,7 +350,7 @@ struct CameraView: View {
   private var previewPill: some View {
     capturePill(
       icon: previewIsActive ? "eye.fill" : "eye.slash.fill",
-      title: "Preview",
+      title: "Просмотр",
       contentTint: .white,
       id: previewIsActive ? "stop_preview_button" : "start_preview_button"
     ) {
@@ -371,7 +376,7 @@ struct CameraView: View {
   /// remounts and holds a fixed Y — only its title / style / id / action change.
   private var anchoredPrimaryButton: some View {
     CustomButton(
-      title: viewModel.hasSession ? "End session" : "Start session",
+      title: viewModel.hasSession ? "Завершить сессию" : "Начать сессию",
       style: viewModel.hasSession ? .destructive : .primary,
       isDisabled: primaryDisabled
     ) {
@@ -435,7 +440,7 @@ struct CameraView: View {
             Image(systemName: "video.fill")
               .font(.system(size: 15, weight: .semibold))
               .foregroundStyle(Color.recordAccent)
-            Text("Record")
+            Text("Запись")
               .font(.system(size: 15, weight: .semibold))
               .foregroundStyle(.white)
           }
@@ -492,7 +497,7 @@ struct CameraView: View {
     UpdateRequiredMessage()
     // Gate the button while the external update flow launches so a double-tap can't
     // fire it twice; re-enabled once the await returns.
-    primaryButton("Update firmware", id: "update_firmware_button", disabled: isLaunchingUpdate) {
+    primaryButton("Обновить прошивку", id: "update_firmware_button", disabled: isLaunchingUpdate) {
       isLaunchingUpdate = true
       Task {
         await wearablesVM.openFirmwareUpdate()
@@ -565,7 +570,7 @@ private struct RecordingTimerLabel: View {
 // MARK: - Update banner
 
 struct UpdateRequiredMessage: View {
-  private let message = "Your glasses need a firmware update before Camera Access can start."
+  private let message = "Обнови прошивку очков перед запуском камеры."
 
   var body: some View {
     HStack(alignment: .top, spacing: 12) {

@@ -17,6 +17,52 @@ import UIKit
 // ast-grep-ignore: swift-testing/swift/no-new-xctest
 import XCTest
 
+final class ProMediaLibraryTests: XCTestCase {
+  func testCapturesSurviveReloadAndVideoSourceRemoval() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let disk = ProMediaDisk(directory: root.appendingPathComponent("library"))
+    let photoBytes = Data([0xFF, 0xD8, 0xFF, 0xD9])
+    let photo = try await disk.savePhoto(photoBytes)
+    let source = root.appendingPathComponent("input.mov")
+    let videoBytes = Data("test video payload".utf8)
+    try videoBytes.write(to: source)
+    let video = try await disk.saveVideo(source)
+    try FileManager.default.removeItem(at: source)
+    let reloaded = try await ProMediaDisk(directory: root.appendingPathComponent("library")).list()
+    XCTAssertEqual(reloaded.count, 2)
+    XCTAssertEqual(try Data(contentsOf: photo.url), photoBytes)
+    XCTAssertEqual(try Data(contentsOf: video.url), videoBytes)
+    XCTAssertTrue(video.isVideo)
+    XCTAssertFalse(photo.isVideo)
+  }
+
+  func testFailedVideoCopyDoesNotPublishBrokenCapture() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let disk = ProMediaDisk(directory: root)
+    do {
+      _ = try await disk.saveVideo(root.appendingPathComponent("missing.mov"))
+      XCTFail("Missing source should fail")
+    } catch {
+      let items = try await disk.list()
+      XCTAssertTrue(items.isEmpty)
+    }
+  }
+
+  func testRepeatedCapturesHaveUniqueNamesAndIgnorePartialFiles() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let disk = ProMediaDisk(directory: root)
+    let first = try await disk.savePhoto(Data([1]))
+    let second = try await disk.savePhoto(Data([2]))
+    try Data([3]).write(to: root.appendingPathComponent(".interrupted.partial"))
+    XCTAssertNotEqual(first.id, second.id)
+    let items = try await disk.list()
+    XCTAssertEqual(items.count, 2)
+  }
+}
+
 @MainActor
 final class ViewModelIntegrationTests: XCTestCase {
 

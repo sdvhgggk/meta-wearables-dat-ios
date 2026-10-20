@@ -45,6 +45,30 @@ enum CapturePreview: Identifiable {
 @Observable
 @MainActor
 final class CameraViewModel {
+  struct Event: Identifiable {
+    let id = UUID()
+    let date = Date()
+    let message: String
+  }
+  var events: [Event] = []
+  var quality: String = UserDefaults.standard.string(forKey: "shhq.quality") ?? "medium" {
+    didSet { UserDefaults.standard.set(quality, forKey: "shhq.quality") }
+  }
+  var requestedFPS: Int = UserDefaults.standard.object(forKey: "shhq.fps") as? Int ?? 24 {
+    didSet { UserDefaults.standard.set(requestedFPS, forKey: "shhq.fps") }
+  }
+  var isFinalizingRecording = false
+  @ObservationIgnored private let mediaLibrary: ProMediaLibrary?
+
+  func log(_ message: String) {
+    events.insert(Event(message: message), at: 0)
+    if events.count > 200 { events.removeLast(events.count - 200) }
+  }
+
+  var diagnosticReport: String {
+    (["SHHQ Meta Pro", "Session: \(sessionStateText); stream: \(streamStateText)"]
+      + events.reversed().map { "\($0.date.ISO8601Format()) \($0.message)" }).joined(separator: "\n")
+  }
   // MARK: - Device
 
   /// Whether an eligible device is currently active. Drives the "Put on your
@@ -180,8 +204,10 @@ final class CameraViewModel {
 
   init(
     wearables: WearablesInterface,
+    mediaLibrary: ProMediaLibrary? = nil,
     backgroundStopErrorSuppressionTimeout: Duration = .seconds(5)
   ) {
+    self.mediaLibrary = mediaLibrary
     self.wearables = wearables
     self.deviceSelector = AutoDeviceSelector(wearables: wearables)
     self.backgroundStopErrorSuppressionTimeout = backgroundStopErrorSuppressionTimeout
@@ -282,8 +308,8 @@ final class CameraViewModel {
     // AudioCaptureHandler, so the SDK stream needs only the public video config (no audio codec).
     let config = StreamConfiguration(
       videoCodec: VideoCodec.hvc1,
-      resolution: StreamingResolution.low,
-      frameRate: 24
+      resolution: quality == "high" ? StreamingResolution.high : (quality == "low" ? .low : .medium),
+      frameRate: UInt([15, 24, 30].contains(requestedFPS) ? requestedFPS : 24)
     )
 
     do {
@@ -341,7 +367,8 @@ final class CameraViewModel {
   }
 
   func startVideoRecording() {
-    guard isStreaming, !isRecording else { return }
+    guard isStreaming, !isRecording, !isFinalizingRecording else { return }
+    log("Начало записи видео")
     // Flip the intent flag synchronously so the toggle and UI don't lag the
     // frame-driven recorder; the file starts on the next frame.
     isRecording = true
@@ -354,7 +381,9 @@ final class CameraViewModel {
   }
 
   func stopVideoRecording() async {
-    guard isRecording else { return }
+    guard isRecording, !isFinalizingRecording else { return }
+    isFinalizingRecording = true
+    defer { isFinalizingRecording = false }
     isRecording = false
     recordingStartDate = nil
     // The writer starts on the first frame after the shutter opens. If stop lands
@@ -368,6 +397,14 @@ final class CameraViewModel {
     // Show a preview/share sheet (mirrors the photo flow) for the finalized file.
     switch await videoRecorder.stopRecording() {
     case .completed(let url):
+      if let mediaLibrary {
+        do {
+          try await mediaLibrary.saveVideo(url)
+          log("Видео сохранено в медиатеку")
+        } catch {
+          showError("Не удалось сохранить видео в медиатеку. Экспортируй его из просмотра: \(error.localizedDescription)")
+        }
+      }
       activePreview = .video(url)
     case .noRecording:
       // Reached only after the intent guard + start wait, so while streaming this
@@ -460,6 +497,7 @@ final class CameraViewModel {
 
   private func handleSessionStateChange(_ state: DeviceSessionState) {
     sessionState = state
+    log("Сессия: \(sessionStateText)")
     if state == .stopped {
       endBackgroundStopErrorSuppression()
       cleanupSession()
@@ -532,6 +570,7 @@ final class CameraViewModel {
 
   private func handleStreamStateChange(_ state: StreamState) {
     streamState = state
+    log("Поток: \(streamStateText)")
     if state == .stopped {
       // Terminal — finalize any recording, then converge teardown. Covers both
       // user-initiated stop and SDK auto-stop (disconnect, error, session end).
@@ -571,10 +610,22 @@ final class CameraViewModel {
     isCapturingPhoto = false
     if let image = UIImage(data: data.data) {
       activePreview = .photo(image)
+      if let mediaLibrary {
+        let bytes = data.data
+        Task {
+          do {
+            try await mediaLibrary.savePhoto(bytes)
+            log("Фото сохранено в медиатеку")
+          } catch {
+            showError("Не удалось сохранить фото в медиатеку. Экспортируй его из просмотра: \(error.localizedDescription)")
+          }
+        }
+      }
     }
   }
 
   private func showError(_ message: String) {
+    log("Ошибка: \(message)")
     errorMessage = message
     showError = true
   }
