@@ -1,0 +1,63 @@
+
+name: Build Meta DAT IPA
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-26
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s \
+            /Applications/Xcode_26.6.app/Contents/Developer
+          xcodebuild -version
+
+      - name: Build CameraAccess for iPhone
+        run: |
+          set -o pipefail
+
+          xcodebuild build \
+            -project samples/CameraAccess/CameraAccess.xcodeproj \
+            -scheme CameraAccess \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/MetaBuild" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            2>&1 | tee build.log
+
+      - name: Package unsigned IPA
+        run: |
+          APP="$RUNNER_TEMP/MetaBuild/Build/Products/Release-iphoneos/CameraAccess.app"
+
+          test -d "$APP"
+
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+
+          zip -qry MetaDAT-unsigned.ipa Payload
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: MetaDAT-iPhone
+          path: MetaDAT-unsigned.ipa
+          if-no-files-found: error
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MetaDAT-build-log
+          path: build.log
+          if-no-files-found: ignore
