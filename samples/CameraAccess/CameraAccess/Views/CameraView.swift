@@ -227,6 +227,12 @@ struct CameraView: View {
   private var topBar: some View {
     HStack(alignment: .top, spacing: 12) {
       VStack(alignment: .leading, spacing: 6) {
+        Text("SHHQ META PRO").font(.caption.bold()).foregroundStyle(.white)
+        if viewModel.isStreaming && viewModel.hasReceivedFirstFrame {
+          Label("LIVE · Прямой эфир", systemImage: "dot.radiowaves.left.and.right")
+            .font(.caption.bold()).foregroundStyle(.mint)
+            .accessibilityIdentifier("live_stream_indicator")
+        }
         statusChip(label: "Сессия", value: viewModel.sessionStateText, active: viewModel.isSessionActive, present: viewModel.hasSession)
         statusChip(label: "Поток", value: viewModel.streamStateText, active: viewModel.isStreaming, present: viewModel.hasStream)
       }

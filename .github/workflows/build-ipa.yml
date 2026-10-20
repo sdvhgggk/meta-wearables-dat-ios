@@ -36,7 +36,7 @@ jobs:
             PROVISIONING_PROFILE_SPECIFIER="" \
             2>&1 | tee build.log
 
-      - name: Test persistent media library
+      - name: Test media library and live camera stream
         run: |
           set -o pipefail
           DEVICE_ID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for devices in d["devices"].values() for x in devices if x["name"].startswith("iPhone")))')
@@ -47,6 +47,7 @@ jobs:
             -destination "platform=iOS Simulator,id=$DEVICE_ID" \
             -derivedDataPath "$RUNNER_TEMP/MetaTests" \
             -only-testing:CameraAccessTests/ProMediaLibraryTests \
+            -only-testing:CameraAccessTests/ViewModelIntegrationTests/testVideoStreamingFlow \
             CODE_SIGNING_ALLOWED=NO \
             2>&1 | tee test.log
 
