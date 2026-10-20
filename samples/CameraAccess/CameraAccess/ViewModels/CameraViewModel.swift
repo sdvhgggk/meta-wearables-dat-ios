@@ -51,10 +51,10 @@ final class CameraViewModel {
     let message: String
   }
   var events: [Event] = []
-  var quality: String = UserDefaults.standard.string(forKey: "shhq.quality") ?? "medium" {
+  var quality: String = UserDefaults.standard.string(forKey: "shhq.quality") ?? "high" {
     didSet { UserDefaults.standard.set(quality, forKey: "shhq.quality") }
   }
-  var requestedFPS: Int = UserDefaults.standard.object(forKey: "shhq.fps") as? Int ?? 24 {
+  var requestedFPS: Int = UserDefaults.standard.object(forKey: "shhq.fps") as? Int ?? 30 {
     didSet { UserDefaults.standard.set(requestedFPS, forKey: "shhq.fps") }
   }
   var isFinalizingRecording = false
@@ -309,7 +309,7 @@ final class CameraViewModel {
     let config = StreamConfiguration(
       videoCodec: VideoCodec.hvc1,
       resolution: quality == "high" ? StreamingResolution.high : (quality == "low" ? .low : .medium),
-      frameRate: UInt([15, 24, 30].contains(requestedFPS) ? requestedFPS : 24)
+      frameRate: UInt([15, 24, 30].contains(requestedFPS) ? requestedFPS : 30)
     )
 
     do {

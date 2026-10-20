@@ -37,6 +37,7 @@ jobs:
             2>&1 | tee build.log
 
       - name: Test media library and live camera stream
+        timeout-minutes: 10
         run: |
           set -o pipefail
           DEVICE_ID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for devices in d["devices"].values() for x in devices if x["name"].startswith("iPhone")))')
@@ -46,9 +47,9 @@ jobs:
             -configuration Debug \
             -destination "platform=iOS Simulator,id=$DEVICE_ID" \
             -derivedDataPath "$RUNNER_TEMP/MetaTests" \
+            -parallel-testing-enabled NO \
             -only-testing:CameraAccessTests/ProMediaLibraryTests \
             -only-testing:CameraAccessTests/ViewModelIntegrationTests/testVideoStreamingFlow \
-            CODE_SIGNING_ALLOWED=NO \
             2>&1 | tee test.log
 
       - name: Package unsigned IPA
@@ -77,4 +78,14 @@ jobs:
           path: |
             build.log
             test.log
+          if-no-files-found: ignore
+
+      - name: Upload simulator diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SHHQ-simulator-diagnostics
+          path: |
+            ~/Library/Logs/DiagnosticReports/CameraAccess*
+            ${{ runner.temp }}/MetaTests/Logs/Test/*.xcresult
           if-no-files-found: ignore
